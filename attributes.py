@@ -2,23 +2,19 @@ import csv
 import time
 from tqdm import tqdm
 from tabulate import tabulate
-from original_combiner import grouped_attributes as ga1
-from recent_combiner import grouped_attributes as ga2
+#from original_combiner import grouped_attributes as ga1
+#from recent_combiner import grouped_attributes as ga2
 start = time.time()
-filenames = ['OptionTradeScreenerResults_20200601', 'OptionTradeScreenerResults_20200602', 'OptionTradeScreenerResults_20200603',
-    'OptionTradeScreenerResults_20200604', 'OptionTradeScreenerResults_20200605', 'OptionTradeScreenerResults_20200608',
-    'OptionTradeScreenerResults_20200609', 'OptionTradeScreenerResults_20200610', 'OptionTradeScreenerResults_20200611',
-    'OptionTradeScreenerResults_20200612', 'OptionTradeScreenerResults_20200615', 'OptionTradeScreenerResults_20200616',
-    'OptionTradeScreenerResults_20200617', 'OptionTradeScreenerResults_20200618', 'OptionTradeScreenerResults_20200619',
-    'OptionTradeScreenerResults_20200622', 'OptionTradeScreenerResults_20200623', 'OptionTradeScreenerResults_20200624',
-    'OptionTradeScreenerResults_20200625', 'OptionTradeScreenerResults_20200626']
+filenames = ['505', '507', '508', '511', '512', '513', '514', '515', '518', '519', '520', '521', '522',
+    '526', '527', '528', '529', '601', '602', '603', '604', '605', '608', '609', '610', '611',
+    '612', '615', '616', '617', '618', '619', '622', '623', '624', '625', '626', '629', '630']
 #this function prints the symbols with most trades (any trade. ask, bid, notional don't matter) across all filenames
 def symbol_counts(input): #returs dictionary mapping each symbol to counter for total number of buy trades
     output = {}
     table_format = []
     print("counting symbols...")
-    for filename in tqdm(input):
-        with open(filename + '.csv') as f:
+    for d in tqdm(input):
+        with open('OptionTradeScreenerResults_2020' + '0' + d + '.csv') as f:
             reader = csv.reader(f)
             for row in reader:
                 #conditional stuff for filtering out non-buys
@@ -47,7 +43,7 @@ def symbol_counts(input): #returs dictionary mapping each symbol to counter for 
     headers = ['symbol', 'count']
     print(tabulate(table_format, headers))
     print("number of distinct symbols: ", i)
-#symbol_counts(filenames)
+symbol_counts(filenames)
 
 def read_symbols():
     rows = []
@@ -324,7 +320,7 @@ for a_list in aa:
         products.append(c)
 
 print(len(products))
-write(products, '___.csv', 'conditionals_products.csv')
+#write(products, '___.csv', 'conditionals_products.csv')
 """
 Attributes                                         #of satisfying trades    top1/3 G/L ratio    notional return %
 -----------------------------------------------  -----------------------  ------------------  -------------------

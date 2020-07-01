@@ -1,10 +1,3 @@
-#TODO:
-#Make it so that group attributes lets me input a certain range of days for which the scores should be calculated
-#As in for range[7-11 days]:
-#   maybe an option expirying 10/16/2020 was bought on 5/08/2020. Only calculate the 'Score:all' or 'Score:top2/3'
-#   using a historical price list of the option's average mid value from 5/15 to 5/19
-
-
 import csv
 import math
 import statistics as stats
@@ -15,33 +8,25 @@ from tqdm import tqdm
 from operator import itemgetter
 start = time.time()
 print("start #####################################################################################################################")
-#when new option trade files are added, rerun: all_combiner(), buys_combiner(), scorer(). Will also have to update the trade_day conditionals in all_combiner()
-filenames = ['OptionTradeScreenerResults_20200505', 'OptionTradeScreenerResults_20200507',
-    'OptionTradeScreenerResults_20200508', 'OptionTradeScreenerResults_20200511', 'OptionTradeScreenerResults_20200512',
-    'OptionTradeScreenerResults_20200513', 'OptionTradeScreenerResults_20200514', 'OptionTradeScreenerResults_20200515',
-    'OptionTradeScreenerResults_20200518', 'OptionTradeScreenerResults_20200519', 'OptionTradeScreenerResults_20200520',
-    'OptionTradeScreenerResults_20200521', 'OptionTradeScreenerResults_20200522', 'OptionTradeScreenerResults_20200526',
-    'OptionTradeScreenerResults_20200527', 'OptionTradeScreenerResults_20200528', 'OptionTradeScreenerResults_20200529',
-    'OptionTradeScreenerResults_20200601', 'OptionTradeScreenerResults_20200602', 'OptionTradeScreenerResults_20200603',
-    'OptionTradeScreenerResults_20200604', 'OptionTradeScreenerResults_20200605', 'OptionTradeScreenerResults_20200608',
-    'OptionTradeScreenerResults_20200609', 'OptionTradeScreenerResults_20200610', 'OptionTradeScreenerResults_20200611',
-    'OptionTradeScreenerResults_20200612', 'OptionTradeScreenerResults_20200615', 'OptionTradeScreenerResults_20200616',
-    'OptionTradeScreenerResults_20200617', 'OptionTradeScreenerResults_20200618', 'OptionTradeScreenerResults_20200619']
+#when new option trade files are added, rerun: all_combiner(), buys_all_combiner(), scorer(). Will also have to update the trade_day conditionals in all_combiner()
+all_tradedays = ['0505', '0507', '0508', '0511', '0512', '0513', '0514', '0515', '0518', '0519', '0520', '0521',
+    '0522', '0526', '0527', '0528', '0529', '0601', '0602', '0603', '0604', '0605', '0608', '0609', '0610',
+    '0611', '0612', '0615', '0616', '0617', '0618', '0619', '0622', '0623', '0624', '0625', '0626', '0629',
+    '0630', '0701']
 def print4():
     for i in range(4):
         print()
 def print2():
     print()
     print()
-#this function combines trades from all filenames into one csv file. will need to rerun this when filenames is updated.
+#this function all_combines trades from all filenames into one csv file. will need to rerun this when filenames is updated.
     #Also appends trade_day parameter to each trade
-def all_combiner(input): #this writes the combined_new.csv, which is all of the block trades near ask from all the input files
-    data = []
-    trade_day = 505
+def all_combiner(input): #this writes the all_combiner.csv, which is all of the block trades near ask from all the input files
+    data_to_write = []
     #relative_trade_day = 0  #don't really need this, because of the Days To Exp param
     print("Reading csv downloads...")
-    for filename in tqdm(input):
-        with open(filename + '_new.csv') as f:
+    for date in tqdm(input):
+        with open('OptionTradeScreenerResults_2020' + date + '.csv') as f:
             reader = csv.reader(f)
             for row in reader:
                 if row == [] or row[14] == 'Trade Price':
@@ -59,39 +44,27 @@ def all_combiner(input): #this writes the combined_new.csv, which is all of the 
                             trimmed_row.append(100*float(row[i])) #converted to percent value
                         continue
                     trimmed_row.append(row[i])
-                trimmed_row.append(str(trade_day)[0] + '/' + str(trade_day)[1:]) #appending Day of Trade
+                trimmed_row.append(date) #appending tradeday
                 """
                 trimmed_row.append(relative_trade_day)
                 relative_time = flt(row[0][:2])*10000 + flt(row[0][3:5])*100 + flt(row[0][6:8]) + relative_trade_day*67000
                 trimmed_row.append(relative_time)
                 """
-                data.append(trimmed_row)
-        #day of trade conditional bullshit:
-        if trade_day == 505:
-            trade_day += 2
-        elif trade_day in [508, 515, 605, 612]: #continually updatee with new fridays. The other conditionals for edge cases
-            trade_day += 3
-        elif trade_day == 522:
-            trade_day += 4
-        elif trade_day == 529:
-            trade_day = 601
-        else:
-            trade_day += 1
-        #relative_trade_day += 1
-    with open('combined_new.csv', 'w') as f:
+                data_to_write.append(trimmed_row)
+    with open('all_combiner.csv', 'w') as f:
         writer = csv.writer(f)
-        print("writing data into combined_new.csv...")
-        for row in tqdm(data):
+        print("writing data into all_combiner.csv...")
+        for row in tqdm(data_to_write):
             writer.writerow(row)
-#all_combiner(filenames)
+#all_combiner(all_tradedays)
 
-#this reads in combined_new.csv and writes the buy trades into buys_new.csv. Also calculates and appends a few more variables for each trade:
+#this reads in all_combiner.csv and writes the buy trades into buys.csv. Also calculates and appends a few more variables for each trade:
     #appends (1): bid-ask spread divided by mid, (2): bid/ask percentile of the buy (mid would be 50, ask would be 100),
     #(3): % OTM, (4): IV20day divided by IV1year
 def filter_buys():
     rows = []
-    print("Reading combined_new.csv. Running filter_buys()...")
-    with open('combined_new.csv') as f:
+    print("Reading all_combiner.csv. Running filter_buys()...")
+    with open('all_combiner.csv') as f:
         reader = csv.reader(f)
         for row in tqdm(reader):
             if row == []:
@@ -120,9 +93,9 @@ def filter_buys():
             else:
                 row.append('')
             rows.append(row)
-    with open('buys_new.csv', 'w') as f:
+    with open('buys.csv', 'w') as f:
         writer = csv.writer(f)
-        print("writing data into buys_new.csv...")
+        print("writing data into buys.csv...")
         for row in tqdm(rows):
             writer.writerow(row)
 #filter_buys()
@@ -130,8 +103,8 @@ def filter_buys():
 def price_history(): #return value lets us see how the price of a specific option changed
     dict = {} #maps each specific option to their dictionary, where keys are days_to_exp and values
         #are a list of mids from that specific days_to_exp value (for trades of said option)
-    print("Reading combined_new.csv. Running price_history()...")
-    with open('combined_new.csv') as f:
+    print("Reading all_combiner.csv. Running price_history()...")
+    with open('all_combiner.csv') as f:
         reader = csv.reader(f)
         for row in tqdm(reader):
             if row == []:
@@ -175,14 +148,14 @@ def price_history(): #return value lets us see how the price of a specific optio
     """
     return options_and_tuples
 
-#this function reads in buys_new.csv and for each buy trade, calculates a score for that trade based on how the price of
+#this function reads in buys.csv and for each buy trade, calculates a score for that trade based on how the price of
     #the option changed over time. Right now only calculates for options that were traded 3+ times after the day they were bought.
 def scorer():
     options_and_tuples = price_history()
     with_scores = []
-    with open('buys_new.csv') as f:
+    with open('buys.csv') as f:
         reader = csv.reader(f)
-        print('reading buys_new.csv. Running scorer()...')
+        print('reading buys.csv. Running scorer()...')
         count = 0
         for row in tqdm(reader):
             count += 1
@@ -190,18 +163,18 @@ def scorer():
                 continue
             option = (row[1], row[2], row[3], row[4])
             if option in options_and_tuples:
-                this_trade_day = 100*int(row[26][0]) + int(row[26][2:])
+                this_trade_day = 100*int(row[26][:2]) + int(row[26][2:])
                 mids_list = []
                 for tuple in options_and_tuples.get(option):
-                    if 100*int(tuple[0][0]) + int(tuple[0][2:]) > this_trade_day:
+                    if 100*int(tuple[0][:2]) + int(tuple[0][2:]) > this_trade_day:
                         mids_list.append(tuple[1])
-                if len(mids_list) < 3: #option must have been traded on 3+ different days AFTER the buy occured
+                if len(mids_list) == 0: #option must have been traded on 3+ different days AFTER the buy occured
                     continue
                 mids_list.sort(reverse = True) #high to low
                 cutoff1 = len(mids_list)
                 cutoff2 = math.ceil(len(mids_list)*2/3)
                 cutoff3 = math.ceil(len(mids_list)/2)
-                cutoff4 = max(2, math.ceil(len(mids_list)/3))
+                cutoff4 = math.ceil(len(mids_list)/3)
                 trade_price = float(row[7])
                 for cutoff in [cutoff1, cutoff2, cutoff3, cutoff4]:
                     score = 0
@@ -209,13 +182,9 @@ def scorer():
                         percent_inc = 100*(mids_list[i] - trade_price) / trade_price
                         score += percent_inc
                     row.append(round(score/cutoff, 3))
-                if row[32] >= 0:
-                    row.append(round(float(row[12])*(1 + row[32]/100), 2))    #a notional adjusted score, calculated as:   notional * [Score:top2/3]/100
-                elif row[32] < 0:
-                    row.append(round(float(row[12])*(1 + row[32]/100), 2))
                 row.append(options_and_tuples.get(option))
                 with_scores.append(row)
-    with open('buys_with_scores_new.csv', 'w') as f:
+    with open('buys_with_scores.csv', 'w') as f:
         writer = csv.writer(f)
         print("writing scores...")
         for row in tqdm(with_scores):
@@ -226,7 +195,7 @@ def scorer():
 def stats_printer(scores_dict):
     output = None
     for cutoff in scores_dict:
-        if cutoff != 'Scores:top2/3': #for only looking at certain score tier
+        if cutoff != 'Scores:all': #adjustable: right now computes gains/losses using Scores:all
             continue
             None
         gains, losses = 0, 0
@@ -239,7 +208,7 @@ def stats_printer(scores_dict):
         if gains == 0:
             return 0
         if losses == 0:
-            return 9999
+            return 9999999999
         #decile printing stuff
         """
         print2()
@@ -261,7 +230,7 @@ def grouped_attributes(input):
     all_headers = ['Time', 'Symbol', 'Expiry', 'Type', 'Strike', 'Spot', 'OI', 'TrdPrice', 'B.Size', 'Bid', 'Ask', 'A.Size', 'Notional', 'TradeIV',
         '1-day IV Chg', 'IV % Rank', 'Cond.', 'Exec.', 'Delta', 'Spread', '20DayHistIV', 'TradeIV vs 20DayIV (% diff)', '1YearHistIV',
         'TradeIV vs 1YearIV (% diff)', 'Days2Exp.', 'Qty.vsOI', 'Date', 'Spread/Mid', 'B/A.Percentile', '% OTM', '20DayIV / 1YearIV',
-        'Score:all', 'Score:top2/3', 'Score:top1/2', 'Score:top1/3', 'NotionalAdj.Score', 'Hist.Prices']
+        'Score:all', 'Score:top2/3', 'Score:top1/2', 'Score:top1/3','Hist.Prices']
     attributes = "Specific attributes: "
     for tuple in input:
         if len(tuple[1]) == 2:
@@ -269,7 +238,7 @@ def grouped_attributes(input):
             continue
         attributes += all_headers[tuple[0]] + tuple[1] + ",   "
     if attributes == "Specific attributes: ":
-        attributes = "Specific attributes:   None. All trades from buys_with_scores_new.csv"
+        attributes = "Specific attributes:   None. All trades from buys_with_scores.csv"
     #print(attributes)
 
     count = 0
@@ -280,7 +249,7 @@ def grouped_attributes(input):
     distinct_symbols = set()
     exceed_100 = False
     scores_dict = {'Scores:all' : [], 'Scores:top2/3' : [], 'Scores:top1/2': [], 'Scores:top1/3': []}
-    with open('buys_with_scores_new.csv') as f:
+    with open('buys_with_scores.csv') as f:
         reader = csv.reader(f)
         print("running grouped_attributes()... @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         for row in tqdm(reader):
@@ -297,6 +266,13 @@ def grouped_attributes(input):
                     if not eval(tuple[1][0] + "'" + row[tuple[0]] + "'" + tuple[1][1]):
                         satisfies = False
                         break
+                elif tuple[0] == 0:
+                    it = row[tuple[0]][:2]
+                    if it == '09':
+                        it = '9'
+                    if not eval("float(" + it + ")" + tuple[1]):
+                        satisfies = False
+                        break
                 else:
                     if not eval(row[tuple[0]] + tuple[1]):
                         satisfies = False
@@ -309,26 +285,31 @@ def grouped_attributes(input):
             scores_dict['Scores:top1/2'].append(float(row[33]))
             scores_dict['Scores:top1/3'].append(float(row[34]))
             count += 1
-            notional_adjusted_scores_sum += float(row[35])
+            #adjustable: right now notional scores are calculated using Scores:top1/3
+            if float(row[34]) >= 0:
+                notional_adjusted_scores_sum += float(row[12])*(1 + float(row[34])/100)
+            elif float(row[34]) < 0:
+                notional_adjusted_scores_sum += float(row[12])*(1 - float(row[34])/100)
             original_notionals_sum += float(row[12])
+
             if len(table_rows) > 100 and exceed_100 == False:
                 table_rows.append([])
                 exceed_100 = True
             if row[1] not in distinct_symbols and exceed_100 == True and len(table_rows) < 150:
-                table_rows.append(row[:8] + row[9:11] + [row[12]] + row[16:18] + row[24:27] + row[31:36])
+                table_rows.append(row[:8] + row[9:11] + [row[12]] + row[16:18] + row[24:27] + row[31:35])
                 distinct_symbols.add(row[1])
             elif exceed_100 == False:
-                table_rows.append(row[:8] + row[9:11] + [row[12]] + row[16:18] + row[24:27] + row[31:36])
+                table_rows.append(row[:8] + row[9:11] + [row[12]] + row[16:18] + row[24:27] + row[31:35])
                 price_history.append(row[:8] + row[9:11] + [row[12]] + row[16:18] + row[24:27] + row[31:])
                 distinct_symbols.add(row[1])
     """
     #table printing
     table_headers = ['Time', 'Symbol', 'Expiry', 'Type', 'Strike', 'Spot', 'OI', 'TrdPrice', 'Bid', 'Ask', 'Notional', 'Cond.',
-        'Exec.', 'Days2Exp.', 'Qty.vsOI', 'Date', 'Score:all', 'Score:top2/3', 'Score:top1/2', 'Score:top1/3', 'NotionalAdj.Score']
+        'Exec.', 'Days2Exp.', 'Qty.vsOI', 'Date', 'Score:all', 'Score:top2/3', 'Score:top1/2', 'Score:top1/3']
     print('Satisfying trades:')
     print(tabulate(table_rows, table_headers)) #adjustable: choose whether to see the table of trades or not
-    print("------  --------  ---------  ------  --------  -------  -----  ----------  -----  -----  ----------  -------  -------  -----------  ----------  ------  -----------  --------------  --------------  --------------  -------------------")
-    print("Time    Symbol    Expiry     Type      Strike     Spot     OI    TrdPrice    Bid    Ask    Notional  Cond.    Exec.      Days2Exp.    Qty.vsOI  Date      Score:all    Score:top2/3    Score:top1/2    Score:top1/3    NotionalAdj.Score")
+    print("------  --------  ---------  ------  --------  -------  -----  ----------  -----  -----  ----------  -------  -------  -----------  ----------  ------  -----------  --------------  --------------  --------------")
+    print("Time    Symbol    Expiry     Type      Strike     Spot     OI    TrdPrice    Bid    Ask    Notional  Cond.    Exec.      Days2Exp.    Qty.vsOI  Date      Score:all    Score:top2/3    Score:top1/2    Score:top1/3")
     print("table rows exceeded 100:", exceed_100)
     print2()
     """
@@ -347,15 +328,15 @@ def grouped_attributes(input):
     print(attributes, "  #of trades:", count)
     return_percent = None
     if count != 0:
-        return_percent = 100*(notional_adjusted_scores_sum - original_notionals_sum)/original_notionals_sum
-    print("Return percentage (for buying these trades with the same notional, and realizing a top2/3 score)", return_percent)
+        return_percent = round(100*(notional_adjusted_scores_sum - original_notionals_sum)/original_notionals_sum, 3)
+    print("Return percentage (for buying these trades with the same notional, and realizing a top1/3 score)", return_percent)
 
     print4()
     return attributes[20:-4], count, gain_loss_ratio, return_percent
 #grouped_attributes([]) #sanity check. scores for all buys in buys_with_scores, with no other restrictions
-grouped_attributes([(1, " == 'VXX'"), (26, ("float(", "[0]) == 6")), (26, ("float(", "[2:]) >= 8"))])
+#grouped_attributes([(1, " == 'VXX'"), (26, ("float(", "[0]) == 6")), (26, ("float(", "[2:]) >= 8"))])
 
-#function only to show/hide results of previous attribute combinations
+#function only to show/hide results of previous attribute all_combinations
 def attr():
     """
     grouped_attributes([(12, "<300"), (26, ("float(", "[0]) == 6")), (26, ("float(", "[2:]) >= 8")), (24, '>79'), (24, '<=84'), (12, '<5000')])              #top2/3 G/L ratio: 3.75    notional return: 111.5%    #of trades:   973
@@ -441,7 +422,7 @@ print("time elapsed:", time.time() - start)
     #floor trades
     #expiration is within 1 week of trade date
 
-#high notional should be combined with all previously isolated params
+#high notional should be all_combiner with all previously isolated params
 #calls vs puts should be examined for all previously isolated params
-#otm/itm % can be combined with other params too
+#otm/itm % can be all_combiner with other params too
 #this ends up being about maybe 40 combos just listed here. kinda should automate param inputs into a certain flexible function
