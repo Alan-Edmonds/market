@@ -2,6 +2,7 @@ import csv
 import time
 import matplotlib.pyplot as plot
 import statistics as stats
+import numpy
 from tqdm import tqdm
 from original_combiner import all_combiner
 start = time.time()
@@ -92,8 +93,8 @@ def process_options():
                 for row in tqdm(reader2):
                     if row == []:
                         continue
-                    if row[2][:-4] != '2020': #skip if the option expiration isn't in 2020
-                        #print("skipped")
+                    if row[2][-4:] != '2020': #skip if the option expiration isn't in 2020
+                        #print("skipped", row[2][-4:])
                         continue
                     if row[1] == earnings_row[1]: #check that the option trade is for the ticker in question
                         specific_opt = (row[1], row[2], row[3], row[4])
@@ -125,7 +126,7 @@ def process_options():
         writer = csv.writer(f)
         for row in tqdm(data_to_write):
             writer.writerow(row)
-#process_options() #runtime ~60min
+#process_options() #runtime ~80min
 
 def stock_prices():
     tickers_and_dates = {} #maps each ticker from the options earnings_processed_options.csv to the list of trade days for that ticker's options. Starts with base cases of ['SPY', 'QQQ', 'IWM', 'SLV', 'XLF', 'GLD', 'GDX', 'VXX']
@@ -166,7 +167,7 @@ def stock_prices():
                 else: #accounts for outliers in spot price, sometimes an $80 stock has spot price value of like 0.17 randomly
                     dict[date] = round(stats.mean(prices[outliers_index : -1*outliers_index]), 3)
             writer.writerow([ticker, dict])
-#stock_prices() #runtime ~30min
+#stock_prices() #runtime ~60min
 
 def find_strangles_helper():
     #   this helps us find options with potential strangles by writing the earnings_strangles_helper.csv, whose every row
@@ -199,8 +200,10 @@ def find_strangles_helper():
                         expiry = eval(row[1])[1]
                         type = eval(row[1])[2]
                         strike = eval(row[1])[3]
-                        if len(expiry) == 9: #changes 5/15/2020 to 05/15/2020 to deal with sorting issues
+                        if len(expiry) == 8: #changes 5/8/2020 to 5/08/2020 to deal with sorting issues
                             #print('shortlength')
+                            expiry = expiry[:2] + '0' + expiry[2:]
+                        if len(expiry) == 9: #changes 6/08/2020 to 06/08/2020
                             expiry = '0' + expiry
                         if type == 'CALL':
                             if expiry in calls: #if this expiry already has been added to calls, we add the new strike price to the list of strike prices for that expiry
@@ -212,32 +215,65 @@ def find_strangles_helper():
                                 puts[expiry].append(strike)
                             else:
                                 puts[expiry] = [strike]
-                data_to_write.append((avg_spot_row[0], trade_day, sorted(calls.items()), sorted(puts.items())))
+                ordered_calls = {}
+                ordered_puts = {}
+                for k in sorted(calls):
+                    ordered_calls[k] = calls.get(k)
+                for k in sorted(puts):
+                    ordered_puts[k] = puts.get(k)
+                data_to_write.append((avg_spot_row[0], trade_day, ordered_calls, ordered_puts))
                 #print(avg_spot_row[0], trade_day, calls, puts)
     with open('earnings_strangles_helper.csv', 'w') as f:
         writer = csv.writer(f)
         for row in data_to_write:
             writer.writerow(row)
-find_strangles_helper() #runtime ~3min
-"""
+#find_strangles_helper() #runtime ~3min
+
 def find_strangles():
+    strangles = []
+    print("creating avg spot price dictionary...")
+    avg_spot_price_dictionary = {} #this dictionary maps each ticker to the dictionary in earnings_avg_spot_prices.csv (which maps each trade_day to the avg spot price of the ticker on that day)
+    with open('earnings_avg_spot_prices.csv') as f:
+        reader = csv.reader(f)
+        for row in tqdm(reader):
+            if row == []:
+                continue
+            avg_spot_price_dictionary[row[0]] = eval(row[1])
+    print("finding strangles...")
     with open('earnings_strangles_helper.csv') as f:
         reader = csv.reader(f)
         for row in tqdm(reader):
             if row == []:
                 continue
+            avg_spot_price = float(avg_spot_price_dictionary.get(row[0]).get(row[1]))
             calls = eval(row[2])
             puts = eval(row[3])
             good_expiries = [] #list of expiries that appear in both calls and puts
-            for expiry in calls:
-                if expiry in puts:
+            for expiry in puts:
+                if expiry in calls:
                     good_expiries.append(expiry)
             for expiry in good_expiries:
-
-
-
+                call_strikes = calls.get(expiry)
+                put_strikes = puts.get(expiry)
+                for c_strike in call_strikes:
+                    c_percent_otm = round(100*(float(c_strike) - avg_spot_price)/avg_spot_price, 3)
+                    for p_strike in put_strikes:
+                        p_percent_otm = round(100*(avg_spot_price - float(p_strike))/avg_spot_price, 3)
+                        otm_difference = round(abs(c_percent_otm - p_percent_otm), 3) #differnce in c_strike's %otm and p_strike's %otm
+                        otm_midpoint = round(c_percent_otm/2 + p_percent_otm/2, 3) #avg of c_strike's %otm and p_strike's %otm. Only relevant if otm_difference is a small value.
+                        if otm_difference < 8:
+                            strangles.append([row[1], row[0], avg_spot_price, otm_difference, otm_midpoint, (expiry, c_strike, c_percent_otm, p_strike, p_percent_otm)])
+    otm_differences = []
+    with open('earnings_strangles.csv', 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(['TradeDay', 'Ticker', 'AvgSpotPrice', 'otm_difference', 'otm_midpoint', '(expiry, c_strike, c_%otm, p_strike, p_%otm)'])
+        for row in strangles:
+            writer.writerow(row)
+            otm_differences.append(row[3])
+    print(numpy.quantile(otm_differences, [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]))
 find_strangles()
-"""
+
+
 def no_earnings(): #looks at changes in options prices for certain non-earnings symbols as a standard for general market conditions
     tickers = ['SPY', 'QQQ', 'IWM', 'SLV', 'XLF', 'GLD', 'GDX', 'VXX']
     with open('earnings_no_earnings.csv', 'w') as f:
