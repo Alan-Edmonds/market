@@ -14,11 +14,11 @@ all_tradedays = ['0505', '0507', '0508', '0511', '0512', '0513', '0514', '0515',
     '0522', '0526', '0527', '0528', '0529', '0601', '0602', '0603', '0604', '0605', '0608', '0609', '0610',
     '0611', '0612', '0615', '0616', '0617', '0618', '0619', '0622', '0623', '0624', '0625', '0626', '0629',
     '0630', '0701', '0702']
-#all_combiner(all_tradedays) #runtime ~3min
+#all_combiner(all_tradedays) #runtime ~2min
 
 def well_traded(): #a cleaner function that reads in the earnings_calendar.csv file and creates the earnings_well_traded.csv
     dictionary = {} #dictionary mapping file for each date to the set of tickers traded on that date
-    print("creating trade_day - tickers dictionary...")
+    print("creating tradeday - tickers dictionary...")
     for d in tqdm(all_tradedays):
         ticker_set = set()
         with open('OptionTradeScreenerResults_2020' + d + '.csv') as f:
@@ -86,7 +86,7 @@ def process_options():
         for earnings_row in tqdm(reader1):
             if earnings_row == []:
                 continue
-            options = {} #dictionary of dictionaries: specific options each mapped to their dictionary which maps trade_day to a list of option's prices on that day
+            options = {} #dictionary of dictionaries: specific options each mapped to their dictionary which maps tradeday to a list of option's prices on that day
             with open('all_combiner.csv') as f2:
                 reader2 = csv.reader(f2)
                 print()
@@ -118,7 +118,7 @@ def process_options():
                             if row[26] in options[specific_opt]:
                                 options[specific_opt][row[26]].append(row[7])
                             else:
-                                options[specific_opt][row[26]] = [row[7]] #each dictionary d is a mapping of trade_day to a tuple of two lists; list of the option's prices on that day, and list of corresponding spot prices
+                                options[specific_opt][row[26]] = [row[7]] #each dictionary d is a mapping of tradeday to a tuple of two lists; list of the option's prices on that day, and list of corresponding spot prices
                         else:
                             options[specific_opt] = {row[26] : [row[7]]} #each specific_opt option is mapped to a dictionary d
             for specific_opt in options:
@@ -131,13 +131,13 @@ def process_options():
                         continue
                     if list(inner_dict.keys()).index(day_before_earnings) <= 1: #index of day_before_earnings has to be at least 2. Skips the specific_opt if I don't have data for it being traded on two different trading days before day_before_earnings. In other words, the option has to have date for it being traded on the three trading days before earings.
                         continue
-                simplified_inner_dict = {} #each specific_opt has a corresponding simplified_inner_dict. In this dictionary, each trade_day is mapped to the avg option price for that day.
-                for trade_day in inner_dict:
-                    price_history_strings = inner_dict.get(trade_day)
+                simplified_inner_dict = {} #each specific_opt has a corresponding simplified_inner_dict. In this dictionary, each tradeday is mapped to the avg option price for that day.
+                for tradeday in inner_dict:
+                    price_history_strings = inner_dict.get(tradeday)
                     floats = []
                     for price in price_history_strings:
                         floats.append(float(price))
-                    simplified_inner_dict[trade_day] = round(stats.mean(floats), 3)
+                    simplified_inner_dict[tradeday] = round(stats.mean(floats), 3)
                 data_to_write.append((earnings_row[0], specific_opt, simplified_inner_dict))
                 print(earnings_row[0], specific_opt, simplified_inner_dict)
     print("writing data into earnings_processed_options.csv...")
@@ -145,9 +145,9 @@ def process_options():
         writer = csv.writer(f)
         for row in tqdm(data_to_write):
             writer.writerow(row)
-#process_options() #runtime ~80min
+#process_options() #runtime ~90min
 
-def stock_prices():
+def avg_spot_prices(): #calculates avg_spot_prices on each tradeday for each of the tickers in earnings_processed_options.csv
     tickers_and_dates = {} #maps each ticker from the options earnings_processed_options.csv to the list of trade days for that ticker's options
     with open('earnings_processed_options.csv') as f:
         reader = csv.reader(f)
@@ -163,8 +163,9 @@ def stock_prices():
                 for d in eval(row[2]).keys():
                     date_set.add(d)
                 tickers_and_dates[eval(row[1])[0]] = date_set
-    data_to_write = []
+    #runtime for code above is ~0 seconds
     print("using tickers_and_dates dictionary to read csv files...")
+    data_to_write = []
     for ticker in tqdm(tickers_and_dates):
         dict = {} #list of (date, avg spot price) tuples for the ticker
         for date in sorted(list(tickers_and_dates.get(ticker))):
@@ -187,12 +188,13 @@ def stock_prices():
         writer = csv.writer(f)
         for row in data_to_write:
             writer.writerow(row)
-#stock_prices() #runtime ~60min
+avg_spot_prices() #runtime ~60min
 
 def find_strangles_helper():
-    #   this helps us find options with potential strangles by writing the earnings_strangles_helper.csv, whose every row
-    #   is made up of ticker, trade_day, calls dictionary, puts dictionary). The calls and puts dictionaries map expiry
-    #   dates to the list of strike prices for options of that expiry (which are for ticker and were traded on trade_day)
+    #   Reads in rows from earnings_avg_spot_prices.csv. row[0] is the ticker and row[1] is its dictionary where keys are
+    #   tradedays and the corresponding value is avg.spot.price for the ticker on that trade day. For each ticker/tradeday combination,
+    #   we read in earnings_processed_options.csv and create the 'calls' and 'puts' dictionaries. For 'calls', the key is option expiry
+    #   and the corresponding value is the list of call strike prices for options of that expiry
     data_to_write = []
     print("running find_strangles_helper()...")
     with open('earnings_avg_spot_prices.csv') as f:
@@ -201,7 +203,7 @@ def find_strangles_helper():
             if avg_spot_row == []:
                 continue
             print("   ...", avg_spot_row[0])
-            for trade_day in eval(avg_spot_row[1]).keys():
+            for tradeday in eval(avg_spot_row[1]).keys():
                 calls = {} #dictionary mapping each expiry to a list of the different strikes traded for call options with that expiry
                 puts = {} #same but for expiry_strikes_puts
                 with open('earnings_processed_options.csv') as f_:
@@ -209,7 +211,7 @@ def find_strangles_helper():
                     for row in reader_:
                         if row == []:
                             continue
-                        if eval(row[1])[0] != avg_spot_row[0] or trade_day not in eval(row[2]).keys(): #the specific option represented by row is not for the ticker in question from avg_spot_row, or it was not traded on trade_day
+                        if eval(row[1])[0] != avg_spot_row[0] or tradeday not in eval(row[2]).keys(): #the specific option represented by row is not for the ticker in question from avg_spot_row, or it was not traded on tradeday
                             continue
                         expiry = eval(row[1])[1]
                         type = eval(row[1])[2]
@@ -235,8 +237,8 @@ def find_strangles_helper():
                     ordered_calls[k] = calls.get(k)
                 for k in sorted(puts):
                     ordered_puts[k] = puts.get(k)
-                data_to_write.append((avg_spot_row[0], trade_day, ordered_calls, ordered_puts))
-                #print(avg_spot_row[0], trade_day, calls, puts)
+                data_to_write.append((avg_spot_row[0], tradeday, ordered_calls, ordered_puts))
+                print(avg_spot_row[0], tradeday, ordered_calls, ordered_puts)
     with open('earnings_strangles_helper.csv', 'w') as f:
         writer = csv.writer(f)
         for row in data_to_write:
@@ -244,9 +246,14 @@ def find_strangles_helper():
 #find_strangles_helper() #runtime ~3min
 
 def find_strangles():
+    # Uses earnings_strangles_helper.csv in combination with earnings_avg_spot_prices.csv to identify call/put pairs that
+    #   could qualify as a strangle. Right now, a call/put pair where the call is X %otm and the put is Y %otm qualifies
+    #   if abs(X - Y) is less than a certain value C, currently set at 6.66 (adjustable). In other words, the pair qualifies
+    #   if the difference in the %otm for call and put is < C.
+    # We then write each qualified strangle into earnings_strangles.csv, along with several relevant stats
     strangles = []
     print("creating avg spot price dictionary...")
-    avg_spot_price_dictionary = {} #this dictionary maps each ticker to the dictionary in earnings_avg_spot_prices.csv (which maps each trade_day to the avg spot price of the ticker on that day)
+    avg_spot_price_dictionary = {} #this dictionary maps each ticker to the dictionary in earnings_avg_spot_prices.csv (which maps each tradeday to the avg spot price of the ticker on that day)
     with open('earnings_avg_spot_prices.csv') as f:
         reader = csv.reader(f)
         for row in tqdm(reader):
@@ -282,7 +289,50 @@ def find_strangles():
         writer.writerow(['TradeDay', 'Ticker', 'AvgSpotPrice', 'otm_difference', 'otm_midpoint', '(expiry, c_strike, c_%otm, p_strike, p_%otm)'])
         for row in strangles:
             writer.writerow(row)
-find_strangles() #runtime <1 second
+#find_strangles() #runtime <1 second
+
+def analyze_strangles1():
+    #   Simple enough function that looks at the strangles in earnings_strangles.csv and calculates their price change over time,
+    #   taking earnings date into account. The harder part will be to only look at the most important strangles. This will largely
+    #   be determined by how 'balanced' the strangle is, but another important factor is how well traded the strangle is.
+    #   For example, maybe 'ALAN' traded at $43 for ten days, so the most balanced strangle is call45/put40. However,
+    #   maybe the call45 was only traded on three of the ten days, and call50 was traded on eight of the ten days, so it may be good
+    #   to look at the call50/put40 strangle as well or instead.
+
+    #IDEAS: to start off, we can look at the price change over time for all of the strangles in earnings_strangles.csv.
+    #   In order to hone down this function, the first filter could be based on the number of times that the strangle was traded
+    #   before earnings. One that is traded 10 times before earnings is more valuable than one traded once before earnings.
+    #   The second filter coudl be based on balanced-ness of the strangle, touched on above, but this is actually not too important
+    #   as the changing avg.spot.price of the stocks will mean that none of these strangles should stay balanced for long. This
+    #   function achieves a similar goal to analyze_strangles2(), with the distinction being that price changes in the stock should
+    #   be reflected in, or at least influence, the price change of the specific strangles we look at in this function.
+    None
+
+
+
+
+
+
+analyze_strangles1()
+
+def analyze_strangles2():
+    # A more sophisticated function that essentially calculates changing IV for each ticker. Instead of seeing how specific
+    #   strangles' prices changed, look at how difference %otm/expiry combination strangles performed, taking the movement of the
+    #   stock's avg.spot.price into account. For example, say 'ALAN' jumped to $60 on day 11, and earnings is on day 15. If we want
+    #   to see how IV has been changing, the call45/put40 strangle for the first ten days would be comparable to a call65/put55,
+    #   and the call50/put40 would be comparable to a call70/put55.
+    # Compared to analyze_strangles1(), this does not need to focus as much on whether the strangle was well traded, because
+    #   we will use predetermined values for %otm/expiry in order to find strangles worth analyzing. The harder part will be
+    #   detemining how to choose these %otm/expiry values in order to get useful results from this function. I would like to choose
+    #   these values so that this %otm has strangles on almost every available tradeday (taking each day's avg.spot.price into account).
+    #   Of course, the %otm value will have to allow for leeway. In the example, call45 on day 10 is 4.7% otm, but the most comparable
+    #   strike of call65 on day11 is 8.3% otm, which is barely a better comparison than call60 which would have been 0% otm.
+
+    #IDEAS: this seems like it will be simpler than analyze_strangles1(). earnings_strangles.csv already has the call and put %otm values,
+    #   so a simple way might be to find one or several (approx.call%otm, approx.put%otm) tuples that appear often for a certain expiry
+    #   (for a certain ticker). Once this is done, the change in price of this %otm/expiry combo demonstrates IV change.
+    None
+analyze_strangles2()
 
 #things to look at:
 #   open interest of option vs stock volume
