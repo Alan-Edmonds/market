@@ -9,11 +9,11 @@ start = time.time()
 #   go to https://www.investing.com/earnings-calendar/
 #   select desired timeframe and scroll down fully to load all text
 #   ctrl+A and copy paste into csv file
-special = ['SPY', 'QQQ', 'IWM', 'SLV', 'XLF', 'GLD', 'GDX', 'VXX']
+specials = ['SPY', 'QQQ', 'IWM', 'SLV', 'XLF', 'GLD', 'GDX', 'VXX', 'TSLA', 'USO']
 all_tradedays = ['0505', '0507', '0508', '0511', '0512', '0513', '0514', '0515', '0518', '0519', '0520', '0521',
     '0522', '0526', '0527', '0528', '0529', '0601', '0602', '0603', '0604', '0605', '0608', '0609', '0610',
     '0611', '0612', '0615', '0616', '0617', '0618', '0619', '0622', '0623', '0624', '0625', '0626', '0629',
-    '0630', '0701']
+    '0630', '0701', '0702']
 #all_combiner(all_tradedays) #runtime ~3min
 
 def well_traded(): #a cleaner function that reads in the earnings_calendar.csv file and creates the earnings_well_traded.csv
@@ -69,6 +69,8 @@ def well_traded(): #a cleaner function that reads in the earnings_calendar.csv f
                     break
     with open('earnings_well_traded.csv', 'w') as f:
         writer = csv.writer(f)
+        for ticker in specials:
+            writer.writerow(['0000', ticker])
         for row in data_to_write:
             writer.writerow(row)
 #well_traded() #runtime ~30sec
@@ -90,13 +92,27 @@ def process_options():
                 print()
                 print()
                 print("reading in all_combiner.csv and finding satisfying options trades for ", earnings_row, "...")
+                current = (None, None)
+                count = 0
+                limit_reached = []
                 for row in tqdm(reader2):
                     if row == []:
                         continue
                     if row[2][-4:] != '2020': #skip if the option expiration isn't in 2020
-                        #print("skipped", row[2][-4:])
                         continue
                     if row[1] == earnings_row[1]: #check that the option trade is for the ticker in question
+                        if row[1] in specials: #these conditionals prevent us from looking at >5000 rows from all_combiner if they are from the same ticker and trade day. For example, >60000 SPY trades happened on 06/05
+                            ticker_and_tradeday = (row[1], row[26])
+                            if count == 5000:
+                                limit_reached.append(ticker_and_tradeday)
+                                count = 0
+                            if ticker_and_tradeday in limit_reached:
+                                continue
+                            if ticker_and_tradeday == current:
+                                count += 1
+                            else:
+                                current = ticker_and_tradeday
+                                count = 1
                         specific_opt = (row[1], row[2], row[3], row[4])
                         if specific_opt in options:
                             if row[26] in options[specific_opt]:
@@ -107,11 +123,14 @@ def process_options():
                             options[specific_opt] = {row[26] : [row[7]]} #each specific_opt option is mapped to a dictionary d
             for specific_opt in options:
                 inner_dict = options.get(specific_opt)
-                day_before_earnings = all_tradedays[all_tradedays.index(earnings_row[0]) - 1]
-                if day_before_earnings not in inner_dict: #skips the specific_opt if I don't have data for it being traded on the day before earnings
+                if len(inner_dict) <= 3: #option must have data for being traded on >3 different trading days
                     continue
-                if list(inner_dict.keys()).index(day_before_earnings) <= 1: #index of day_before_earnings has to be at least 2. Skips the specific_opt if I don't have data for it being traded on two different trading days before day_before_earnings. In other words, the option has to have date for it being traded on the three trading days before earings.
-                    continue
+                if specific_opt[0] not in specials:
+                    day_before_earnings = all_tradedays[all_tradedays.index(earnings_row[0]) - 1]
+                    if day_before_earnings not in inner_dict: #skips the specific_opt if I don't have data for it being traded on the day before earnings
+                        continue
+                    if list(inner_dict.keys()).index(day_before_earnings) <= 1: #index of day_before_earnings has to be at least 2. Skips the specific_opt if I don't have data for it being traded on two different trading days before day_before_earnings. In other words, the option has to have date for it being traded on the three trading days before earings.
+                        continue
                 simplified_inner_dict = {} #each specific_opt has a corresponding simplified_inner_dict. In this dictionary, each trade_day is mapped to the avg option price for that day.
                 for trade_day in inner_dict:
                     price_history_strings = inner_dict.get(trade_day)
@@ -129,9 +148,7 @@ def process_options():
 #process_options() #runtime ~80min
 
 def stock_prices():
-    tickers_and_dates = {} #maps each ticker from the options earnings_processed_options.csv to the list of trade days for that ticker's options. Starts with base cases of ['SPY', 'QQQ', 'IWM', 'SLV', 'XLF', 'GLD', 'GDX', 'VXX']
-    for symbol in special:
-        tickers_and_dates[symbol] = set(all_tradedays)
+    tickers_and_dates = {} #maps each ticker from the options earnings_processed_options.csv to the list of trade days for that ticker's options
     with open('earnings_processed_options.csv') as f:
         reader = csv.reader(f)
         print("reading in earnings_processed_options.csv and creating tickers_and_dates dictionary...")
@@ -146,45 +163,42 @@ def stock_prices():
                 for d in eval(row[2]).keys():
                     date_set.add(d)
                 tickers_and_dates[eval(row[1])[0]] = date_set
+    data_to_write = []
+    print("using tickers_and_dates dictionary to read csv files...")
+    for ticker in tqdm(tickers_and_dates):
+        dict = {} #list of (date, avg spot price) tuples for the ticker
+        for date in sorted(list(tickers_and_dates.get(ticker))):
+            prices = []
+            with open('OptionTradeScreenerResults_2020' + date + '.csv') as f_:
+                reader = csv.reader(f_)
+                for row in reader:
+                    if row == []:
+                        continue
+                    if row[1] == ticker:
+                        prices.append(float(row[8]))
+            prices.sort()
+            outliers_index = round(len(prices)/10)
+            if outliers_index == 0:
+                dict[date] = round(stats.mean(prices), 3)
+            else: #accounts for outliers in spot price, sometimes an $80 stock has spot price value of like 0.17 randomly
+                dict[date] = round(stats.mean(prices[outliers_index : -1*outliers_index]), 3)
+        data_to_write.append([ticker, dict])
     with open('earnings_avg_spot_prices.csv', 'w') as f:
         writer = csv.writer(f)
-        print("using tickers_and_dates dictionary to read csv files...")
-        for ticker in tqdm(tickers_and_dates):
-            dict = {} #list of (date, avg spot price) tuples for the ticker
-            for date in sorted(list(tickers_and_dates.get(ticker))):
-                prices = []
-                with open('OptionTradeScreenerResults_2020' + date + '.csv') as f_:
-                    reader = csv.reader(f_)
-                    for row in reader:
-                        if row == []:
-                            continue
-                        if row[1] == ticker:
-                            prices.append(float(row[8]))
-                prices.sort()
-                outliers_index = round(len(prices)/10)
-                if outliers_index == 0:
-                    dict[date] = round(stats.mean(prices), 3)
-                else: #accounts for outliers in spot price, sometimes an $80 stock has spot price value of like 0.17 randomly
-                    dict[date] = round(stats.mean(prices[outliers_index : -1*outliers_index]), 3)
-            writer.writerow([ticker, dict])
+        for row in data_to_write:
+            writer.writerow(row)
 #stock_prices() #runtime ~60min
 
 def find_strangles_helper():
     #   this helps us find options with potential strangles by writing the earnings_strangles_helper.csv, whose every row
-    #   is a tuple of (ticker, trade_day, calls dictionary, puts dictionary). The calls and puts dictionaries map expiry
-    #   dates to the list of strike prices for options of that expiry (which are for ticker and were traded on trade_day).
-    #   The earnings_strangles_helper.csv along with earnings_avg_spot_prices.csv will make it easier to build the
-    #   find_strangles() function. This function finds call options and put options, with the same expiry, and uses the
-    #   avg spot price to find a pairing where the call and put are approx the same %otm. This is a valid strangle, and
-    #   it's price movement over time is what I'm interested in.
+    #   is made up of ticker, trade_day, calls dictionary, puts dictionary). The calls and puts dictionaries map expiry
+    #   dates to the list of strike prices for options of that expiry (which are for ticker and were traded on trade_day)
     data_to_write = []
     print("running find_strangles_helper()...")
     with open('earnings_avg_spot_prices.csv') as f:
         reader = csv.reader(f)
         for avg_spot_row in tqdm(reader):
             if avg_spot_row == []:
-                continue
-            if avg_spot_row[0] in special:
                 continue
             print("   ...", avg_spot_row[0])
             for trade_day in eval(avg_spot_row[1]).keys():
@@ -195,7 +209,7 @@ def find_strangles_helper():
                     for row in reader_:
                         if row == []:
                             continue
-                        if eval(row[1])[0] != avg_spot_row[0] or trade_day not in eval(row[2]).keys(): #the specific option represented by row_b is not for the ticker in question from row_a, or it was not traded on trade_day
+                        if eval(row[1])[0] != avg_spot_row[0] or trade_day not in eval(row[2]).keys(): #the specific option represented by row is not for the ticker in question from avg_spot_row, or it was not traded on trade_day
                             continue
                         expiry = eval(row[1])[1]
                         type = eval(row[1])[2]
@@ -261,57 +275,14 @@ def find_strangles():
                         p_percent_otm = round(100*(avg_spot_price - float(p_strike))/avg_spot_price, 3)
                         otm_difference = round(abs(c_percent_otm - p_percent_otm), 3) #differnce in c_strike's %otm and p_strike's %otm
                         otm_midpoint = round(c_percent_otm/2 + p_percent_otm/2, 3) #avg of c_strike's %otm and p_strike's %otm. Only relevant if otm_difference is a small value.
-                        if otm_difference < 8:
+                        if otm_difference < 6.66: #this is a very liberal cutoff and allows some ridiculous strangles for high priced stocks. It was set as a conservative cutoff for strangles on NIO, whose spot price is betwee 3.5 and 4. It is much too liberal a cutoff for stocks like BABA whose spot prices are >200
                             strangles.append([row[1], row[0], avg_spot_price, otm_difference, otm_midpoint, (expiry, c_strike, c_percent_otm, p_strike, p_percent_otm)])
-    otm_differences = []
     with open('earnings_strangles.csv', 'w') as f:
         writer = csv.writer(f)
         writer.writerow(['TradeDay', 'Ticker', 'AvgSpotPrice', 'otm_difference', 'otm_midpoint', '(expiry, c_strike, c_%otm, p_strike, p_%otm)'])
         for row in strangles:
             writer.writerow(row)
-            otm_differences.append(row[3])
-    print(numpy.quantile(otm_differences, [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]))
-find_strangles()
-
-
-def no_earnings(): #looks at changes in options prices for certain non-earnings symbols as a standard for general market conditions
-    tickers = ['SPY', 'QQQ', 'IWM', 'SLV', 'XLF', 'GLD', 'GDX', 'VXX']
-    with open('earnings_no_earnings.csv', 'w') as f:
-        writer = csv.writer(f)
-        for ticker in tqdm(tickers):
-            options = {} #dictionary of dictionaries: specific options each mapped to their dictionary which maps trade_day to a list of option's prices on that day
-            with open('all_combiner.csv') as f2:
-                reader = csv.reader(f2)
-                print()
-                print()
-                print("reading in all_combiner.csv and finding satisfying options trades for", ticker, "...")
-                for row in tqdm(reader):
-                    if row == []:
-                        continue
-                    if row[1] == ticker: #check that the option trade is for the ticker in question
-                        specific_opt = (row[1], row[2], row[3], row[4])
-                        if specific_opt in options:
-                            if row[26] in options[specific_opt]:
-                                options[specific_opt][row[26]].append(row[7])
-                            else:
-                                options[specific_opt][row[26]] = [row[7]] #each dictionary d is a mapping of trade_day to a list of the option's prices on that day
-                        else:
-                            options[specific_opt] = {row[26] : [row[7]]} #each specific_opt option is mapped to a dictionary d
-            for specific_opt in options:
-                inner_dict = options.get(specific_opt)
-                if len(inner_dict) < 2:
-                    continue
-                simplified_inner_dict = {}
-                for trade_day in inner_dict:
-                    sum = 0
-                    for price in inner_dict.get(trade_day):
-                        sum += float(price)
-                    simplified_inner_dict[trade_day] = round(sum/len(inner_dict.get(trade_day)), 3) #this value is the avg price on trade_day
-                writer.writerow([specific_opt, simplified_inner_dict])
-                print(specific_opt, simplified_inner_dict)
-    print("done.")
-#no_earnings()
-
+find_strangles() #runtime <1 second
 
 #things to look at:
 #   open interest of option vs stock volume
