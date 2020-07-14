@@ -315,6 +315,8 @@ def analyze_strangles1():
 
 analyze_strangles1()
 
+
+
 def analyze_strangles2():
     # A more sophisticated function that essentially calculates changing IV for each ticker. Instead of seeing how specific
     #   strangles' prices changed, look at how difference %otm/expiry combination strangles performed, taking the movement of the

@@ -3,9 +3,9 @@ import time
 from tabulate import tabulate
 from tqdm import tqdm
 start = time.time()
-def printer():
+def printer(filename):
     rows = []
-    with open('OptionTradeScreenerResults_20200505.csv') as f:
+    with open(filename) as f:
         reader = csv.reader(f)
         count = 0
         for row in reader:
@@ -22,7 +22,7 @@ def printer():
     headers = ['index', 'param', 'val']
     print('original csv parameters:')
     print(tabulate(table_rows, headers)) #prints all params in original csv files
-printer()
+printer('OptionTradeScreenerResults_20200505.csv')
 
 def never_blank():
     rows = []
@@ -82,7 +82,7 @@ def with_scores_printer():
             if row == []:
                 continue
 
-                
+
             """
             if row[26] == '6/08' and float(row[32]) < 0:
                 params = row
